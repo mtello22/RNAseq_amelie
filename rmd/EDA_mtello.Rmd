@@ -1,0 +1,570 @@
+---
+title: "Amelie RNA-seq"
+author: "Marco Tello"
+date: "2025-06-24"
+output:
+  html_document:
+    code_folding: hide
+    df_print: paged
+    number_sections: yes
+    toc: yes
+    toc_depth: 3
+    toc_float:
+      collapsed: yes
+      smooth_scroll: yes
+    keep_md: true
+editor_options: 
+  markdown: 
+    wrap: 72
+    
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Differential expression tools
+library(edgeR)
+library(DESeq2)
+
+# Data format and ID conversion
+library(data.table)
+library(tidyverse)
+library(stringr)
+
+# Plot generation 
+library(ggplot2)
+library(factoextra)
+library(pheatmap)
+
+# Custom functions
+custom_volcano <- function(DEG_results, alpha, log2FC){
+  # DESeq2 will make some adjusted pvalues NA, details in their docs
+  num_na <- sum(is.na(DEG_results$padj))
+  # Ommit na results and categorize each gene
+  temp <- data.table(na.omit(DEG_results))
+  temp[, alpha := ifelse(padj < alpha, TRUE, FALSE)]
+  temp[, log2FC := ifelse(abs(log2FoldChange) >= log2FC, TRUE, FALSE)]
+  temp[, DEG := "No"]
+  temp[, DEG := ifelse(alpha & !log2FC, "FDR", DEG)]
+  temp[, DEG := ifelse(alpha & log2FC, "FDR and FC", DEG)]
+  # Include gene names for the highest fold changes
+  # Genes not selected will have their name set to "" in the plot
+  setorder(temp, "log2FoldChange")
+  # Make plot
+  ggplot(temp, aes(x = log2FoldChange, 
+                   y = -log10(padj), 
+                   color = DEG)) +
+    geom_hline(yintercept = -log10(alpha), 
+               linetype = "dashed", color = "gray", linewidth = 1) +
+    geom_vline(xintercept = log2FC, 
+               linetype = "dashed", color = "gray", linewidth = 1) +
+    geom_vline(xintercept = -log2FC, 
+               linetype = "dashed", color = "gray", linewidth = 1) +
+    geom_point(alpha = 0.4, size = 3) +
+    scale_x_continuous(breaks = seq(ceiling(range(temp$log2FoldChange))[1],
+                                    ceiling(range(temp$log2FoldChange))[2])) +
+    scale_color_manual(values = c("No" = "darkgray", 
+                                  "FDR" = "blue", 
+                                  "FDR and FC" = "red"), 
+                       labels = c(paste("FDR (", 
+                                        as.character(table(temp$DEG)[1]), 
+                                        ")", sep = ""), 
+                                  paste("FDR and FC (",
+                                        as.character(table(temp$DEG)[2]),")", sep = ""),
+                                  paste("Not Sig. (", 
+                                        as.character(table(temp$DEG)[3] + num_na), ")", sep = ""))) +
+    ylab(expression(-log[10]("FDR")))+
+    xlab(expression(log[2]("Fold Change")))+
+    labs(color = "DEG status") +
+    theme_bw()
+}
+
+visualize_degs <- function(DEG_results, alpha, log2FC){
+  histogram <- ggplot(na.omit(DEG_results), aes(x = pvalue)) + 
+    geom_histogram(binwidth = 0.05, breaks = seq(0, 1, by = 0.05), 
+                   fill = "gray", color = "black") + 
+    xlab(expression(italic("p-value")))+
+    labs(title = "Histogram of p-values", y = "Frequency")+
+    theme_bw()
+  volcano <- custom_volcano(DEG_results, alpha, log2FC)
+  return(list(histogram, volcano))
+}
+
+
+data_path <- "~/GitHub/RNAseq_amelie/data/salmon_quant/"
+
+theme_set(theme_bw())
+
+
+
+```
+
+# Exploratory Data Analysis
+
+The goal is to explore if:
+
+-   Are there any outlier samples?
+
+-   Are the count distributions are similar across all samples?
+
+-   Do gene expression variability aligns with experimental conditions?
+
+## Sample pre-processing
+
+First we standardized the sample names. Although the number of samples
+is not consecutive, we decided to keep the original numbers for most
+samples to be able to trace them back to the fastq files.
+
+The experimental conditions are described as:
+
+Obese male C57B6J
+
+-   **V**: Vehicle
+
+-   **S:** Diet supplemented with Semaglutide
+
+-   **PF:** Pair-fed diet, same calories as semaglutide group
+
+```{r Read Input}
+
+exp_data <- fread(file.path(data_path, "Salmon_EstCount_ENSG.tsv"), header = TRUE)
+
+```
+
+## Count distribution
+
+By looking at the density plots of the expression data it is possible to
+determine if any sample is a clear outlier.
+
+```{r Raw density}
+
+exp_data %>%
+  pivot_longer(!ENSG) %>%
+  ggplot(aes(x=value + 1, color = name)) +
+    geom_density() +
+    scale_x_continuous(trans = 'log10', labels = scales::comma) + 
+  labs(x = "Estimated counts + 1", y = "Density")
+
+```
+
+Seems like most genes have too few reads so we remove genes without
+counts across all samples. Then we repeat the density plot.
+
+```{r Density - no zeroes}
+
+exp_data <- exp_data[rowSums(exp_data[, .SD, .SDcols = !"ENSG"] == 0) < ncol(exp_data)-1]
+exp_data %>%
+  pivot_longer(!ENSG) %>%
+  ggplot(aes(x=value + 1, color = name)) +
+    geom_density() +
+    scale_x_continuous(trans = 'log10', labels = scales::comma)+ 
+  labs(x = "Estimated counts + 1", y = "Density")
+
+```
+
+To identify if any given experimental condition has any spefici bias in
+library size, we colored the samples accordingly: blue - vehicle, red -
+parid fed, and green - semi.
+
+```{r Density no all zeroes by condition}
+
+temp <- exp_data %>%
+  pivot_longer(!ENSG) %>%
+  mutate(condition = gsub(pattern = "\\d+", replacement = "", x = name)) %>%
+  mutate(condition = case_when(
+    condition == "CTRL" ~ "blue",
+    condition == "FA" ~ "red",
+    condition == "PNS" ~ "cyan",
+    condition == "PTS" ~ "purple"))
+
+
+temp %>%
+  ggplot(aes(x=value + 1, color= name))+
+  geom_density() +
+  scale_x_continuous(trans = 'log10', labels = scales::comma) +
+  scale_color_manual(values = temp$condition, 
+                     breaks = temp$name) 
+
+temp %>%
+  ggplot(aes(x = name, y = value + 1, color= name))+
+  geom_violin() +
+  scale_y_continuous(trans = 'log10', labels = scales::comma, 
+                     breaks = c(1, 3, 10, 1000, 100000)) +
+  scale_color_manual(values = temp$condition, 
+                     breaks = temp$name) 
+
+```
+
+We can observe that all samples have similar expression trends.
+
+### Filter lowly expressed genes
+
+To increase data quality we removed lowly expressed genes in two steps:
+
+1.  Removed genes with no counts across all samples.
+
+Since we already filtered for 0 counts, we'll try with at least 1 read
+
+```{r Filter no exp genes}
+# Remove columns with gene information 
+exp_mat <- exp_data %>%
+  column_to_rownames("ENSG")
+# Remove rows with all entries equal zero
+exp_mat <- exp_mat[!(rowSums(exp_mat <= 2) == ncol(exp_mat)),]
+
+```
+
+2.  Removed genes with less than two reads in more than 12 samples.
+
+```{r filter lowly exp genes}
+# We use the average 1st quartile as threshold (2.55), round down to 2
+# floor(mean(apply(exp_mat, MARGIN = 2, quantile, 0.25)))
+
+# Select genes to keep
+min_reads <- 4
+min_samples <- 10
+genes_to_keep <- apply(exp_mat >= min_reads, 
+                       MARGIN = 1, sum) > min_samples
+
+# Final gene count matrix
+exp_mat <- exp_mat[genes_to_keep,]
+
+```
+
+
+Now we repeat the previous visualizations to explore how the count
+distributions changed after filtering
+
+```{r }
+
+exp_mat %>%
+  rownames_to_column("ENSG") %>%
+  pivot_longer(!ENSG) %>%
+  ggplot(aes(x=value + 1, color = name)) +
+    geom_density() +
+    scale_x_continuous(trans = 'log10', labels = scales::comma)
+
+```
+
+```{r}
+
+temp <- exp_mat  %>%
+  rownames_to_column("ENSG") %>%
+  pivot_longer(!ENSG) %>%
+  mutate(condition = gsub(pattern = "\\d+", replacement = "", x = name)) %>%
+  mutate(condition = case_when(
+    condition == "CTRL" ~ "blue",
+    condition == "FA" ~ "red",
+    condition == "PNS" ~ "cyan",
+    condition == "PTS" ~ "purple"))
+
+temp %>%
+  ggplot(aes(x=value + 1, color= name))+
+  geom_density() +
+  scale_x_continuous(trans = 'log10', labels = scales::comma) +
+  scale_color_manual(values = temp$condition, 
+                     breaks = temp$name) 
+
+temp %>%
+  ggplot(aes(x = name, y = value + 1, color= name))+
+  geom_violin() +
+  scale_y_continuous(trans = 'log10', labels = scales::comma, 
+                     breaks = c(1, 3, 10, 1000, 100000)) +
+  scale_color_manual(values = temp$condition, 
+                     breaks = temp$name) 
+
+```
+
+This step made samples distributions to look mostly normal on the
+log10 + 1 scale. 
+
+## CPM normalization
+
+Before proceeding to further analysis we need to normalize the gene
+counts, we will use *counts per million* (CPM) to adjust for library
+size and transform it to log space for better visualization.
+
+```{r cpm norm}
+# CPM normalization and transform to log2
+expr_log2cpm <- cpm(exp_mat, 
+                    log = TRUE, 
+                    prior.count = 1) %>% 
+  data.frame() 
+
+expr_log2cpm %>%
+  rownames_to_column(var = "ENSG") %>%
+  pivot_longer(!ENSG) %>%
+  dplyr::select(!ENSG) %>%
+  ggplot(aes(x=value, color= name))+
+  geom_density() 
+
+```
+
+### Violin plots
+
+To directly compare sample gene expression distribution without overlap
+between density plots we generated the respective violin plots
+
+```{r violin plot}
+
+temp <- expr_log2cpm %>%
+  rownames_to_column("ENSG") %>%
+  pivot_longer(!ENSG) %>%
+  mutate(condition = gsub(pattern = "\\d+", replacement = "", x = name)) %>%
+  mutate(condition = case_when(
+    condition == "CTRL" ~ "blue",
+    condition == "FA" ~ "red",
+    condition == "PNS" ~ "cyan",
+    condition == "PTS" ~ "purple"))
+
+
+temp %>%
+  ggplot(aes(x = name, y = value, color= name))+
+  geom_violin() +
+  scale_y_continuous(breaks = c(1, 3, 10, 1000, 100000)) +
+  scale_color_manual(values = temp$condition, 
+                     breaks = temp$name) 
+
+```
+
+
+
+### Sample-sample correlation plot
+
+Using normalized counts we generated a plot to observe if there is
+correlation within diet groups which would group the samples
+accordingly.
+
+```{r sample-sample}
+# Annotation
+
+# Standardize conditon names
+condition <- names(expr_log2cpm) %>% 
+  str_extract(pattern = "^(CTRL|FA|PNS|PTS)")
+
+annot <- data.frame(Diet = as.factor(condition),
+                    row.names = names(expr_log2cpm))
+
+
+annot_colors <- list(Diet = c("CTRL" = "blue", 
+                              "FA" = "red", 
+                              "PNS" = "cyan",
+                               "PTS" = "purple"))
+
+# Heatmap            
+expr_log2cpm %>%
+  cor(method = "spearman") %>%
+  pheatmap(annotation_col = annot,
+           annotation_row = annot,
+           show_rownames = FALSE, 
+           annotation_colors = annot_colors, 
+           angle_col = 45)
+
+
+```
+
+
+### Principal Component Analysis (PCA)
+
+Another way of determining relationship between the samples is through a
+PCA analysis, which reduces the dimentionality of our data to a set of
+independent variables (principal components) that represent the major
+proportion of variability in our data.
+
+```{r PCA CPM}
+
+PCs <- prcomp(t(cpm(exp_mat)), center = TRUE, scale = TRUE)
+# Scree plot 
+fviz_eig(PCs)
+# Scatter plot
+eig_val <- get_eigenvalue(PCs)
+PCs <- cbind(annot, PCs$x[,1:10])
+PCs$sample_id <- rownames(PCs)
+
+PCs <- PCs %>%
+  mutate(color_class = case_when(
+    condition == "CTRL" ~ "blue",
+    condition == "FA" ~ "red",
+    condition == "PNS" ~ "cyan",
+    condition == "PTS" ~ "purple"))
+
+PCs %>%
+  ggplot(aes(x = PC1, y = PC2, 
+             color = condition)) + 
+  geom_point(aes(size = 8)) + 
+  scale_color_manual(values = PCs$color_class, 
+                     breaks = PCs$Diet) +
+  labs(x= paste("PC1 (",round(eig_val$variance.percent[1], 2),"%)", sep = ""),
+       y= paste("PC2 (",round(eig_val$variance.percent[2], 2),"%)", sep = ""),
+       color = "Condition")+
+  guides(size = "none") +
+  theme_bw()
+
+
+PCs %>%
+  ggplot(aes(x = PC3, y = PC2, 
+             color = Diet)) + 
+  geom_point(aes(size = 8)) + 
+  scale_color_manual(values = PCs$color_class, 
+                     breaks = PCs$Diet) +
+  labs(x= paste("PC3 (",round(eig_val$variance.percent[3], 2),"%)", sep = ""),
+       y= paste("PC2 (",round(eig_val$variance.percent[2], 2),"%)", sep = ""))+
+  guides(size = "none") +
+  theme_bw()
+
+
+```
+
+The scree plot shows that the three first PCs contain most of the
+expression variability in the dataset. Plotting the first two PCs single
+out one of the vehicle samples as a potential outlier, in particular
+along the fist PCS. There was not any clear clustering of the samples
+based on experimental conditions.
+
+#### Clustering and PCA on top variable genes
+
+For scenarios where experimental variability is expected to be low, it
+is worth looking at genes with the highest overall variability. If we
+expect a few differentially expressed genes, the signal is likely to get
+lost among many genes with no expression changes.
+
+```{r}
+
+temp <- DESeq2::vst(as.matrix(ceiling(exp_mat)))
+#Top 10% variable
+index <- which( rownames(temp) %in% names(sort(apply(X = temp, 
+                                                     MARGIN = 1, 
+                                                     var), 
+                                               decreasing = TRUE)[1:ceiling(nrow(temp) * 0.2)]))
+temp <- temp[index,]
+
+PCs <- prcomp(t(temp), center = TRUE, scale = TRUE)
+# Scree plot 
+fviz_eig(PCs)
+# Scatter plot
+eig_val <- get_eigenvalue(PCs)
+PCs <- cbind(annot, PCs$x[,1:10])
+PCs$sample_id <- rownames(PCs)
+
+PCs <- PCs %>%
+  mutate(color_class = case_when(
+    condition == "CTRL" ~ "blue",
+    condition == "FA" ~ "red",
+    condition == "PNS" ~ "cyan",
+    condition == "PTS" ~ "purple")) 
+
+PCs %>%
+  ggplot(aes(x = PC1, y = PC2, 
+             color = condition)) + 
+  geom_point(aes(size = 8)) + 
+  scale_color_manual(values = PCs$color_class, 
+                     breaks = PCs$Diet) +
+  labs(x= paste("PC1 (",round(eig_val$variance.percent[1], 2),"%)", sep = ""),
+       y= paste("PC2 (",round(eig_val$variance.percent[2], 2),"%)", sep = ""))+
+  guides(size = "none") +
+  theme_bw()
+
+
+PCs %>%
+  ggplot(aes(x = PC3, y = PC2, 
+             color = Diet)) + 
+  geom_point(aes(size = 8)) + 
+  scale_color_manual(values = PCs$color_class, 
+                     breaks = PCs$Diet) +
+  labs(x= paste("PC3 (",round(eig_val$variance.percent[3], 2),"%)", sep = ""),
+       y= paste("PC2 (",round(eig_val$variance.percent[2], 2),"%)", sep = ""))+
+  guides(size = "none") +
+  theme_bw()
+
+```
+
+Considering only the top 20% variable genes, most of the expression
+differences between samples could be explained by the first two PCs.
+
+
+
+## EDA conclusions.
+
+TBD
+
+
+# DESeq2 analysis
+
+After verifying the data was correctly processed, we performed a differential expression analysis using DESeq2.
+
+The groups tested were:
+
+
+```{r}
+deseq2_res <- fread("~/GitHub/RNAseq_amelie/output/DEG_results.tsv")
+unique(deseq2_res$Group)
+
+```
+For this analysis the DEG threshold for the adjusted pvalues is 0.05, and 1 for the log2FC. Thus, a gene needs to show a Fold Change of at least 2 and pass the FDR threshold of 0.05
+
+```{r}
+alpha <- 0.05
+log2FC <- 1
+```
+
+
+
+## Fatty Acid vs Control
+
+This is the baseline expression differences.
+
+
+```{r}
+
+de_res <- deseq2_res[Group == "FA_vs_Ctrl"]
+de_res[ , Group := NULL]
+de_res[ , ensembl_gene_id := NULL]
+de_res[ , entrezgene_id := NULL]
+setnames(de_res, "external_gene_name", "geneID")
+de_res[padj <= alpha, ]
+
+temp <- visualize_degs(de_res, alpha, log2FC)
+temp
+
+
+```
+
+
+## PNS vs Fatty Acid
+
+```{r}
+
+de_res <- deseq2_res[Group == "PNS_vs_FA"]
+de_res[ , Group := NULL]
+de_res[ , ensembl_gene_id := NULL]
+de_res[ , entrezgene_id := NULL]
+setnames(de_res, "external_gene_name", "geneID")
+de_res[padj <= alpha, ]
+
+temp <- visualize_degs(de_res, alpha, log2FC)
+temp
+
+
+```
+
+
+
+## PTS vs Fatty Acid
+
+```{r}
+
+de_res <- deseq2_res[Group == "PTS_vs_FA"]
+de_res[ , Group := NULL]
+de_res[ , ensembl_gene_id := NULL]
+de_res[ , entrezgene_id := NULL]
+setnames(de_res, "external_gene_name", "geneID")
+de_res[padj <= alpha, ]
+
+temp <- visualize_degs(de_res, alpha, log2FC)
+temp
+
+
+```
+
+
+
