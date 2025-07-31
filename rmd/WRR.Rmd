@@ -2,7 +2,20 @@
 title: "Weighted Recovery Ratios"
 author: "Marco Tello"
 date: "2024-11-28"
-output: github_document
+output:
+  html_document:
+    code_folding: hide
+    df_print: paged
+    number_sections: yes
+    toc: yes
+    toc_depth: 3
+    toc_float:
+      collapsed: yes
+      smooth_scroll: yes
+    keep_md: true
+editor_options: 
+  markdown: 
+    wrap: 72
 ---
 
 ```{r setup, include=FALSE}
