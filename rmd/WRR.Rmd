@@ -1,0 +1,240 @@
+---
+title: "Weighted Recovery Ratios"
+author: "Marco Tello"
+date: "2024-11-28"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(data.table)
+library(ggplot2)
+library(scales)
+library(ComplexHeatmap)
+library(biomaRt)
+
+alpha <- 0.05
+```
+
+# Analysis of RNA-seq data using recovery rates
+
+The goal of the current analysis is to identify:
+
+1) FA-amplified PTS/PNS targets   
+2) FA-affected PTS/PNS targets  
+3) Unique PTS/PNS targets  
+
+
+```{r}
+
+rnaseq_reads <- fread("~/GitHub/RNAseq_amelie/data/salmon_quant/Salmon_EstCount_ENSG.tsv")
+
+ensembl <- useEnsembl(biomart="genes", dataset="hsapiens_gene_ensembl", mirror="asia")
+  
+bm <- getBM( attributes = c("external_gene_name","ensembl_gene_id"),
+             filters    = "ensembl_gene_id",
+             values     = rnaseq_reads$ENSG,
+             mart       = ensembl)
+bm <- as.data.table(bm)
+
+rnaseq_reads <- merge.data.table(x = bm, y = rnaseq_reads, 
+                                 by.x = "ensembl_gene_id", by.y = "ENSG", 
+                                 all.y = TRUE)
+rnaseq_reads[, ensembl_gene_id := NULL]
+
+setnames(rnaseq_reads, "external_gene_name", "ENSG")
+
+rnaseq_reads
+```
+
+## Alternative proposal for log2(FC): Weighted Recovery Ratio
+
+$\text{Weighted Recovery Ratio} = \left(1 - \frac{\text{Treatment} - \text{Ctrl}}{Stress - \text{Ctrl}}\right) \cdot \left|Stress - \text{Ctrl\right|$
+
+Rationale  
+
+To quantify the extent to which a treatment (PTS or PNS) restores gene expression altered by fatty acid (FA) stress back to the healthy baseline (Ctrl). This metric accounts for both the proportional recovery (directional reversion toward Ctrl) and the biological significance of the fatty acid stress-induced changes (magnitude of the FA-Ctrl shift).
+
+
+Components
+
+Proportional Recovery (Term between parenthesis): This term captures the relative shift of gene expression under treatment compared to the shift caused by H₂O₂. A value closer to 1 indicates near-complete recovery to Ctrl, while values < 0 indicate expression moving further away from Ctrl.
+
+Biological Magnitude Weighting | Absolute term |: This term weights the proportional recovery by the magnitude of the expression change induced by H₂O₂. This means that genes with larger H₂O₂-induced shifts are given more importance.
+
+Ranges and Interpretation
+
+If you consider x as the Weighted Recovery Ratio of any given gene:
+
+x < 0 : The treatment pushes expression levels further away from Ctrl in the same direction as the stress effect. Meaning the treatment exacerbated the stress-induced dysregulation. This is not necessarily bad, since a "dysregulation" mechanism could help restore homeostasis.
+
+x ∼ 0: Minimal recovery or no effect of the treatment.
+
+0 < x < 1: Partial recovery, the treatment was moderately effective in reversing oxidative stress-induced dysregulation.
+
+x ≥ 1: Complete or "over-recovery", the treatment effectively restores expression to healthy levels, potentially also overshooting healthy baseline.
+
+
+
+## Calculate Recovery Rates
+
+We first calculate average VST values for all genes within each experimental condition. 
+
+```{r}
+rnaseq_vst <- data.table(ENSG = rnaseq_reads$ENSG,
+                         DESeq2:::vst(as.matrix(ceiling(rnaseq_reads[, 
+                                                                     .SD, 
+                                                                     .SDcols = !"ENSG"]))))
+
+rnaseq_vst <- melt(rnaseq_vst, id.vars = "ENSG", variable.name = "Condition", value.name = "VST")
+rnaseq_vst[, Condition := gsub("[1-3]", "", Condition)]
+rnaseq_vst[, VST := mean(VST), by = c("ENSG", "Condition")]
+rnaseq_vst <- dcast(unique(rnaseq_vst), formula = ENSG ~ Condition, value.var = "VST")
+rnaseq_vst
+
+```
+
+Next, we calculate the recovery ratios for each experimental condition 
+
+```{r}
+rnaseq_rank <- rnaseq_vst
+
+rnaseq_rank[, AbsoluteEffect := FA - CTRL]
+rnaseq_rank[, PTS_Recovery := round((1 - ((PTS - CTRL)/(AbsoluteEffect))) * abs(AbsoluteEffect), 5)]
+rnaseq_rank[, PNS_Recovery := round((1 - ((PNS - CTRL)/(AbsoluteEffect))) * abs(AbsoluteEffect), 5)]
+
+rnaseq_rank[, PTS_Recovery := ifelse(AbsoluteEffect == 0, 0, PTS_Recovery)]
+rnaseq_rank[, PNS_Recovery := ifelse(AbsoluteEffect == 0, 0, PNS_Recovery)]
+
+rnaseq_rank <- rnaseq_rank[, .SD, .SDcols = c("ENSG", "PTS_Recovery", "PNS_Recovery")]
+setorder(rnaseq_rank, PTS_Recovery)
+rnaseq_rank
+
+```
+
+## Visualize Recovery rates
+
+
+```{r}
+
+apply(rnaseq_rank[, .SD, .SDcols = -"ENSG"], MARGIN = 2, summary)
+
+recovery_dt <- melt(rnaseq_rank, id.vars = "ENSG", variable.name = "Condition", value.name = "WRR")
+ggplot(recovery_dt, aes(x = WRR, fill = Condition)) + 
+  geom_histogram(binwidth = 0.2) +
+  geom_vline(xintercept = 0, colour = "black", linetype = "dashed") +
+  scale_y_continuous(trans = "log1p", labels = comma, breaks = c(1, 10, 1000, 5000, 20000, 30000))+
+  facet_wrap(~Condition)
+
+
+```
+
+The histograms represent the recovery rates calculated on VST counts. Most genes showed a moderate to large recovery centered at 0. Based on the summary statistics and histograms, seems like PNS had the highest recovery while GEN had the strongest effect overall. 
+
+## Classification of genes based on WRR
+
+```{r}
+
+rnaseq_rank[, PTS_Classification := ifelse(PTS_Recovery < -0.5, "EnhancedResponse", "NoResponse")]
+rnaseq_rank[, PTS_Classification := ifelse(PTS_Recovery > 0.5, "RecoveryResponse", PTS_Classification)]
+
+rnaseq_rank[, PNS_Classification := ifelse(PNS_Recovery < -0.5, "EnhancedResponse", "NoResponse")]
+rnaseq_rank[, PNS_Classification := ifelse(PNS_Recovery > 0.5, "RecoveryResponse", PNS_Classification)]
+
+setcolorder(rnaseq_rank, c("ENSG", "PTS_Recovery", "PTS_Classification"))
+rnaseq_rank
+
+```
+
+
+```{r}
+dt_plot <- rnaseq_rank[, .(ENSG, PTS_Classification, PNS_Classification)]
+dt_plot <- melt(dt_plot, id.vars = "ENSG")
+dt_plot[, variable := stringr:::str_remove(variable, "_Classification")]
+
+ggplot(dt_plot, aes(x = value, fill = variable)) +
+  geom_bar(position=position_dodge()) + 
+  facet_wrap( ~ variable) +
+  scale_y_continuous(trans = "log10") +
+  coord_flip() +
+  labs(x = "", y = "Number of genes (log10)",
+       fill = "Treatment")
+```
+
+
+```{r}
+
+upset_dt <- dt_plot[, .(ENSG, Class = paste(variable, value, sep = "_"))]
+upset_dt <- dcast(upset_dt, ENSG ~ Class, fun.aggregate = length)
+
+upset_mat <- as.matrix(upset_dt[, !"ENSG"])
+rownames(upset_mat) <- upset_dt$ENSG
+
+upset_mat <- make_comb_mat(upset_mat)
+
+upset_mat
+```
+
+
+```{r}
+UpSet(upset_mat)
+```
+
+
+```{r}
+# PNS Recovery & PTS NoResponse
+extract_comb(upset_mat, "001010")
+# PNS Enhanced & PTS NoResponse
+extract_comb(upset_mat, "100010")
+
+
+# PTS Recovery & PNS NoResponse
+extract_comb(upset_mat, "010001")
+# PTS Enhanced & PNS NoResponse
+extract_comb(upset_mat, "010100")
+
+```
+
+## Overlap with DEGs
+
+
+```{r}
+degs <- fread("~/GitHub/RNAseq_amelie/output/DEG_results.tsv")
+degs <- degs[, .(external_gene_name, log2FoldChange, padj, Group)]
+degs <- unique(degs[external_gene_name != ""])
+
+# Add Categories of interest
+degs[, WRR_category := "None"]
+# PNS Recovery & PTS NoResponse
+degs[external_gene_name %in% extract_comb(upset_mat, "001010"), 
+     WRR_category := "PNS_Recovery"]
+# PTS Recovery & PTS NoResponse
+degs[external_gene_name %in% extract_comb(upset_mat, "001010"), 
+     WRR_category := "PTS_Recovery"]
+# PNS Enhanced & PTS NoResponse
+degs[external_gene_name %in% extract_comb(upset_mat, "100010"), 
+     WRR_category := "PNS_Enhanced"]
+# PTS Enhanced & PTS NoResponse
+degs[external_gene_name %in% extract_comb(upset_mat, "010100"), 
+     WRR_category := "PTS_Enhanced"]
+
+degs
+```
+
+
+```{r}
+temp <- degs[padj < alpha & WRR_category != "None" & Group == "PNS_vs_FA", 
+             .(external_gene_name, log2FoldChange, WRR_category)]
+setorder(temp, "log2FoldChange")
+temp
+
+```
+
+```{r}
+temp <- degs[padj < alpha & WRR_category != "None" & Group == "PTS_vs_FA", 
+             .(external_gene_name, log2FoldChange, WRR_category)]
+setorder(temp, "log2FoldChange")
+temp
+
+```
+
