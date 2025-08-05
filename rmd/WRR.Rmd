@@ -71,9 +71,9 @@ To quantify the extent to which a treatment (PTS or PNS) restores gene expressio
 
 Components
 
-Proportional Recovery (Term between parenthesis): This term captures the relative shift of gene expression under treatment compared to the shift caused by H₂O₂. A value closer to 1 indicates near-complete recovery to Ctrl, while values < 0 indicate expression moving further away from Ctrl.
+Proportional Recovery (Term between parenthesis): This term captures the relative shift of gene expression under treatment compared to the shift caused by FA stress. A value closer to 1 indicates near-complete recovery to Ctrl, while values < 0 indicate expression moving further away from Ctrl.
 
-Biological Magnitude Weighting | Absolute term |: This term weights the proportional recovery by the magnitude of the expression change induced by H₂O₂. This means that genes with larger H₂O₂-induced shifts are given more importance.
+Biological Magnitude Weighting | Absolute term |: This term weights the proportional recovery by the magnitude of the expression change induced by FA stress. This means that genes with larger FA stress-induced shifts are given more importance.
 
 Ranges and Interpretation
 
@@ -83,7 +83,7 @@ x < 0 : The treatment pushes expression levels further away from Ctrl in the sam
 
 x ∼ 0: Minimal recovery or no effect of the treatment.
 
-0 < x < 1: Partial recovery, the treatment was moderately effective in reversing oxidative stress-induced dysregulation.
+0 < x < 1: Partial recovery, the treatment was moderately effective in reversing FA stress-induced dysregulation.
 
 x ≥ 1: Complete or "over-recovery", the treatment effectively restores expression to healthy levels, potentially also overshooting healthy baseline.
 
@@ -236,7 +236,10 @@ degs
 
 
 ```{r}
-temp <- degs[padj < alpha & WRR_category != "None" & Group == "PNS_vs_FA", 
+temp <- degs[  padj < alpha & 
+               WRR_category %in% c("PNS_Recovery", "PNS_Enhanced") & 
+               Group == "PNS_vs_FA", 
+               
              .(external_gene_name, log2FoldChange, WRR_category)]
 setorder(temp, "log2FoldChange")
 temp
@@ -244,10 +247,45 @@ temp
 ```
 
 ```{r}
-temp <- degs[padj < alpha & WRR_category != "None" & Group == "PTS_vs_FA", 
+temp <- degs[  padj < alpha & 
+               WRR_category %in% c("PTS_Recovery", "PTS_Enhanced") & 
+               Group == "PTS_vs_FA", 
              .(external_gene_name, log2FoldChange, WRR_category)]
 setorder(temp, "log2FoldChange")
 temp
 
 ```
+
+
+```{r}
+cur_treatment <- "PNS_vs_FA"
+
+treatment <- degs[Group == cur_treatment & padj < alpha, external_gene_name]
+baseline_ns <- degs[Group == "FA_vs_Ctrl" & padj > alpha, external_gene_name]
+treatment <- intersect(treatment, baseline_ns)
+treatment <- degs[Group == cur_treatment & external_gene_name %in% treatment,
+                     .(external_gene_name, log2FoldChange, padj)]
+fwrite(pns_v_ctrl, file = paste("~/GitHub/RNAseq_amelie/output/", 
+                                cur_treatment, "-specific,tsv", sep = ""), 
+       append = FALSE, quote = FALSE, sep = '\t', 
+       row.names = FALSE, col.names = TRUE)
+```
+
+
+
+
+```{r}
+cur_treatment <- "PTS_vs_FA"
+
+treatment <- degs[Group == cur_treatment & padj < alpha, external_gene_name]
+baseline_ns <- degs[Group == "FA_vs_Ctrl" & padj > alpha, external_gene_name]
+treatment <- intersect(treatment, baseline_ns)
+treatment <- degs[Group == cur_treatment & external_gene_name %in% treatment,
+                     .(external_gene_name, log2FoldChange, padj)]
+fwrite(pns_v_ctrl, file = paste("~/GitHub/RNAseq_amelie/output/", 
+                                cur_treatment, "-specific,tsv", sep = ""), 
+       append = FALSE, quote = FALSE, sep = '\t', 
+       row.names = FALSE, col.names = TRUE)
+```
+
 

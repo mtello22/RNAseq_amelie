@@ -27,6 +27,24 @@ DEG_results <- as.data.table(keep.rownames = TRUE, DEG_results)
 setnames(DEG_results, "rn", "ENSG")
 DEG_results[, Group := "FA_vs_Ctrl"]
 
+DEGs <- results(DESeqDataset, 
+                name="condition_PNS_vs_CTRL",
+                pAdjustMethod = "BH", 
+                alpha = 0.05)
+DEGs <- as.data.table(DEGs, keep.rownames = TRUE)
+setnames(DEGs, "rn", "ENSG")
+DEGs[, Group := "PNS_vs_CTRL"]
+DEG_results <- rbind(DEG_results, DEGs)
+
+DEGs <- results(DESeqDataset, 
+                name="condition_PTS_vs_CTRL",
+                pAdjustMethod = "BH", 
+                alpha = 0.05)
+DEGs <- as.data.table(DEGs, keep.rownames = TRUE)
+setnames(DEGs, "rn", "ENSG")
+DEGs[, Group := "PTS_vs_CTRL"]
+DEG_results <- rbind(DEG_results, DEGs)
+
 ####################
 
 deseq_coldat$condition <- relevel(deseq_coldat$condition, ref = "FA")
