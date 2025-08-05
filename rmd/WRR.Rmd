@@ -266,7 +266,7 @@ treatment <- intersect(treatment, baseline_ns)
 treatment <- degs[Group == cur_treatment & external_gene_name %in% treatment,
                      .(external_gene_name, log2FoldChange, padj)]
 fwrite(pns_v_ctrl, file = paste("~/GitHub/RNAseq_amelie/output/", 
-                                cur_treatment, "-specific,tsv", sep = ""), 
+                                cur_treatment, "-specific.tsv", sep = ""), 
        append = FALSE, quote = FALSE, sep = '\t', 
        row.names = FALSE, col.names = TRUE)
 ```
@@ -283,7 +283,7 @@ treatment <- intersect(treatment, baseline_ns)
 treatment <- degs[Group == cur_treatment & external_gene_name %in% treatment,
                      .(external_gene_name, log2FoldChange, padj)]
 fwrite(pns_v_ctrl, file = paste("~/GitHub/RNAseq_amelie/output/", 
-                                cur_treatment, "-specific,tsv", sep = ""), 
+                                cur_treatment, "-specific.tsv", sep = ""), 
        append = FALSE, quote = FALSE, sep = '\t', 
        row.names = FALSE, col.names = TRUE)
 ```
