@@ -514,7 +514,7 @@ log2FC <- 0.58
 This is the baseline expression differences.
 
 
-```{r}
+```{r FAvsCTRL}
 
 de_res <- deseq2_res[Group == "FA_vs_Ctrl"]
 de_res[ , Group := NULL]
@@ -533,7 +533,7 @@ temp
 
 ## PNS vs Fatty Acid
 
-```{r}
+```{r PNSvsFA}
 
 de_res <- deseq2_res[Group == "PNS_vs_FA"]
 de_res[ , Group := NULL]
@@ -553,7 +553,7 @@ temp
 
 ## PTS vs Fatty Acid
 
-```{r}
+```{r PTSvsFA}
 
 de_res <- deseq2_res[Group == "PTS_vs_FA"]
 de_res[ , Group := NULL]

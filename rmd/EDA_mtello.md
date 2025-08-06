@@ -507,14 +507,14 @@ temp
 ## [[1]]
 ```
 
-![](EDA_mtello_files/figure-html/unnamed-chunk-6-1.png)<!-- -->
+![](EDA_mtello_files/figure-html/FAvsCTRL-1.png)<!-- -->
 
 ```
 ## 
 ## [[2]]
 ```
 
-![](EDA_mtello_files/figure-html/unnamed-chunk-6-2.png)<!-- -->
+![](EDA_mtello_files/figure-html/FAvsCTRL-2.png)<!-- -->
 
 
 ## PNS vs Fatty Acid
@@ -545,14 +545,14 @@ temp
 ## [[1]]
 ```
 
-![](EDA_mtello_files/figure-html/unnamed-chunk-7-1.png)<!-- -->
+![](EDA_mtello_files/figure-html/PNSvsFA-1.png)<!-- -->
 
 ```
 ## 
 ## [[2]]
 ```
 
-![](EDA_mtello_files/figure-html/unnamed-chunk-7-2.png)<!-- -->
+![](EDA_mtello_files/figure-html/PNSvsFA-2.png)<!-- -->
 
 
 
@@ -584,14 +584,14 @@ temp
 ## [[1]]
 ```
 
-![](EDA_mtello_files/figure-html/unnamed-chunk-8-1.png)<!-- -->
+![](EDA_mtello_files/figure-html/PTSvsFA-1.png)<!-- -->
 
 ```
 ## 
 ## [[2]]
 ```
 
-![](EDA_mtello_files/figure-html/unnamed-chunk-8-2.png)<!-- -->
+![](EDA_mtello_files/figure-html/PTSvsFA-2.png)<!-- -->
 
 
 
