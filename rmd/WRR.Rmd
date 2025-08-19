@@ -265,7 +265,14 @@ baseline_ns <- degs[Group == "FA_vs_Ctrl" & padj > alpha, external_gene_name]
 treatment <- intersect(treatment, baseline_ns)
 treatment <- degs[Group == cur_treatment & external_gene_name %in% treatment,
                      .(external_gene_name, log2FoldChange, padj)]
-fwrite(pns_v_ctrl, file = paste("~/GitHub/RNAseq_amelie/output/", 
+
+treatment <- merge.data.table(x = treatment, y = rnaseq_rank[, .(ENSG, PNS_Recovery, PNS_Classification)], 
+                              by.x = "external_gene_name", by.y = "ENSG", 
+                              all.x = TRUE, all.y = FALSE)
+names(treatment) <- c("gene_name", "log2FC", "adjusted_pvalue", "WRR", "Classification")
+setorder(treatment, "WRR")
+
+fwrite(treatment, file = paste("~/GitHub/RNAseq_amelie/output/", 
                                 cur_treatment, "-specific.tsv", sep = ""), 
        append = FALSE, quote = FALSE, sep = '\t', 
        row.names = FALSE, col.names = TRUE)
@@ -282,7 +289,14 @@ baseline_ns <- degs[Group == "FA_vs_Ctrl" & padj > alpha, external_gene_name]
 treatment <- intersect(treatment, baseline_ns)
 treatment <- degs[Group == cur_treatment & external_gene_name %in% treatment,
                      .(external_gene_name, log2FoldChange, padj)]
-fwrite(pns_v_ctrl, file = paste("~/GitHub/RNAseq_amelie/output/", 
+
+treatment <- merge.data.table(x = treatment, y = rnaseq_rank[, .(ENSG, PTS_Recovery, PTS_Classification)], 
+                              by.x = "external_gene_name", by.y = "ENSG", 
+                              all.x = TRUE, all.y = FALSE)
+names(treatment) <- c("gene_name", "log2FC", "adjusted_pvalue", "WRR", "Classification")
+setorder(treatment, "WRR")
+
+fwrite(treatment, file = paste("~/GitHub/RNAseq_amelie/output/", 
                                 cur_treatment, "-specific.tsv", sep = ""), 
        append = FALSE, quote = FALSE, sep = '\t', 
        row.names = FALSE, col.names = TRUE)
