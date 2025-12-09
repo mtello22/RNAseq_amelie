@@ -30,9 +30,6 @@ custom_volcano <- function(DEG_results, alpha, log2FC, top_exp){
   # Include gene names for the highest fold changes
   # Genes not selected will have their name set to "" in the plot
   setorder(temp, "log2FoldChange")
-  top_exp_genes <- temp[DEG == "FDR and FC", external_gene_name]
-  top_exp_genes <- top_exp_genes[c(1:top_exp, (length(top_exp_genes) - top_exp -1):length(top_exp_genes))]
-  temp[, gene_label := ifelse(external_gene_name %in% top_exp_genes, external_gene_name, "")]
   # Make plot
   ggplot(temp, aes(x = log2FoldChange, 
                    y = -log10(padj), 
@@ -58,9 +55,6 @@ custom_volcano <- function(DEG_results, alpha, log2FC, top_exp){
                                         as.character(table(temp$DEG)[3] + num_na), ")", sep = ""))) +
     ylab(expression(-log[10]("FDR")))+
     xlab(expression(log[2]("Fold Change")))+
-    geom_label_repel(aes(label = gene_label),
-                     force = 20, nudge_x = 5, 
-                      nudge_y = -20, colour = "black")+
     labs(color = "DEG status") +
     theme_bw()
 }
@@ -94,18 +88,22 @@ Group: Comparison group label [Experimental condition]_Vs[Control condition]. Po
 
 
 ```{r}
-degs <- fread("~/GitHub/RNAseq_PECs/data/DEG_results.tsv")
-exp_data <- fread("~/GitHub/RNAseq_PECs/data/filtered_counts.tsv")
-exp_data <- merge.data.table(x = degs[,.SD, .SDcols = c("ensembl_gene_id_version", 
-                                                        "external_gene_name",
-                                                        "entrezgene_id")], 
+
+degs <- fread("~/GitHub/RNAseq_amelie/output/DEG_results.tsv")
+
+exp_data <- fread("~/GitHub/RNAseq_amelie/data/salmon_quant/Salmon_EstCount_ENSG.tsv")
+exp_data <- merge.data.table(x = degs[,.SD, 
+                                      .SDcols = c("ensembl_gene_id",
+                                                  "external_gene_name",
+                                                  "entrezgene_id")], 
                              y = exp_data, 
-                             by.x = "ensembl_gene_id_version", 
+                             by.x = "ensembl_gene_id", 
                              by.y = "ENSG", 
                              all.y = TRUE)
 exp_data <- unique(exp_data)
 
-vst_counts <- DESeq2::varianceStabilizingTransformation(as.matrix(exp_data[, 4:ncol(exp_data)]))
+vst_data <- floor(as.matrix(exp_data[, 4:ncol(exp_data)]))
+vst_counts <- DESeq2::varianceStabilizingTransformation(vst_data)
 vst_counts <- cbind(exp_data[,1:3], data.table(vst_counts))
 
 head(degs)
@@ -118,21 +116,28 @@ head(vst_counts)
 We will first visualize DEGs by group using volcano plots. We will define DEGs as follow:
 
 ```{r}
-alpha <- 0.01
-log2FC <- 2
+alpha <- 0.05
+log2FC <- 1
   
 ```
 
 
 
-### H2O2_Vs_Ctrl
+### FA_vs_Ctrl
 
 First we will visualize the changes in expression comparing exposure to H2O2 vs control condition.
 
 We will first generate a histogram of the raw p-values for all genes. If the H0 is true, we would expect to see an uniform distribution of pvalues. A peak at low zeroes indicate we reject the H0.
 
 ```{r}
-temp <- visualize_degs(degs[Group == "H2O2_Vs_Ctrl"], alpha, log2FC, top_exp = 5)
+temp <- degs[Group == "FA_vs_Ctrl"]
+temp <- temp[, .SD, 
+             .SDcols = setdiff(names(temp), 
+                               c("external_gene_name", 
+                                 "entrezgene_id", 
+                                 "Group"))]
+
+temp <- visualize_degs(temp, alpha, log2FC, top_exp = 5)
 temp[[1]]
 ```
 Then we visualize the expression changes using a volcano plot.
@@ -142,14 +147,21 @@ temp[[2]]
 ```
 
 
-### GEN9_vs_H2O2
+### PNS_vs_CTRL
 
 First we will visualize the changes in expression comparing exposure to H2O2 vs control condition.
 
 We will first generate a histogram of the raw p-values for all genes. If the H0 is true, we would expect to see an uniform distribution of pvalues. A peak at low zeroes indicate we reject the H0.
 
 ```{r}
-temp <- visualize_degs(degs[Group == "GEN9_vs_H2O2"], alpha, log2FC)
+temp <- degs[Group == "PNS_vs_CTRL"]
+temp <- temp[, .SD, 
+             .SDcols = setdiff(names(temp), 
+                               c("external_gene_name", 
+                                 "entrezgene_id", 
+                                 "Group"))]
+
+temp <- visualize_degs(temp, alpha, log2FC)
 temp[[1]]
 ```
 Then we visualize the expression changes using a volcano plot.
@@ -159,14 +171,22 @@ temp[[2]]
 ```
 
 
-### PNS2_vs_H2O2
+### PTS_vs_CTRL
 
 First we will visualize the changes in expression comparing exposure to H2O2 vs control condition.
 
 We will first generate a histogram of the raw p-values for all genes. If the H0 is true, we would expect to see an uniform distribution of pvalues. A peak at low zeroes indicate we reject the H0.
 
 ```{r}
-temp <- visualize_degs(degs[Group == "PNS2_vs_H2O2"], alpha, log2FC)
+temp <- degs[Group == "PTS_vs_CTRL"]
+temp <- temp[, .SD, 
+             .SDcols = setdiff(names(temp), 
+                               c("external_gene_name", 
+                                 "entrezgene_id", 
+                                 "Group"))]
+
+
+temp <- visualize_degs(temp, alpha, log2FC)
 temp[[1]]
 ```
 Then we visualize the expression changes using a volcano plot.
@@ -176,14 +196,22 @@ temp[[2]]
 ```
 
 
-### PTS3_vs_H2O2
+### PNS_vs_FA
 
 First we will visualize the changes in expression comparing exposure to H2O2 vs control condition.
 
 We will first generate a histogram of the raw p-values for all genes. If the H0 is true, we would expect to see an uniform distribution of pvalues. A peak at low zeroes indicate we reject the H0.
 
 ```{r}
-temp <- visualize_degs(degs[Group == "PTS3_vs_H2O2"], alpha, log2FC)
+temp <- degs[Group == "PNS_vs_FA"]
+temp <- temp[, .SD, 
+             .SDcols = setdiff(names(temp), 
+                               c("external_gene_name", 
+                                 "entrezgene_id", 
+                                 "Group"))]
+
+
+temp <- visualize_degs(temp, alpha, log2FC)
 temp[[1]]
 ```
 Then we visualize the expression changes using a volcano plot.
@@ -192,7 +220,29 @@ Then we visualize the expression changes using a volcano plot.
 temp[[2]]
 ```
 
-### TODO: Explore samples in the conditions PTS3 and H2O2. Are ther a lot of genes with zero reads that scape filtering step?
+### PTS_vs_FA
+
+First we will visualize the changes in expression comparing exposure to H2O2 vs control condition.
+
+We will first generate a histogram of the raw p-values for all genes. If the H0 is true, we would expect to see an uniform distribution of pvalues. A peak at low zeroes indicate we reject the H0.
+
+```{r}
+temp <- degs[Group == "PTS_vs_FA"]
+temp <- temp[, .SD, 
+             .SDcols = setdiff(names(temp), 
+                               c("external_gene_name", 
+                                 "entrezgene_id", 
+                                 "Group"))]
+
+
+temp <- visualize_degs(temp, alpha, log2FC)
+temp[[1]]
+```
+Then we visualize the expression changes using a volcano plot.
+
+```{r}
+temp[[2]]
+```
 
 
 
@@ -309,7 +359,7 @@ ggplot(exp_percent,
   scale_fill_manual(values = c("green", "blue", "red", "white")) +
   theme_bw() +
   facet_grid(~Group) +
-  scale_x_continuous(labels = label_percent(scale = 1))+
+  scale_x_continuous(labels = label_percent(scale = 1), limits = c(-200, 200))+
   labs(x = "Expression recovered after H2O2 exposure", y = NULL)
 ```
 

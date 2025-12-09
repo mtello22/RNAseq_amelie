@@ -40,20 +40,24 @@ The goal of the current analysis is to identify:
 
 ```{r}
 
-rnaseq_reads <- fread("~/GitHub/RNAseq_amelie/data/salmon_quant/Salmon_EstCount_ENSG.tsv")
+degs <- fread("~/GitHub/RNAseq_amelie/output/DEG_results.tsv")
 
-ensembl <- useEnsembl(biomart="genes", dataset="hsapiens_gene_ensembl", mirror="asia")
-  
-bm <- getBM( attributes = c("external_gene_name","ensembl_gene_id"),
-             filters    = "ensembl_gene_id",
-             values     = rnaseq_reads$ENSG,
-             mart       = ensembl)
-bm <- as.data.table(bm)
+exp_data <- fread("~/GitHub/RNAseq_amelie/data/salmon_quant/Salmon_EstCount_ENSG.tsv")
+exp_data <- merge.data.table(x = degs[,.SD, 
+                                      .SDcols = c("ensembl_gene_id",
+                                                  "external_gene_name",
+                                                  "entrezgene_id")], 
+                             y = exp_data, 
+                             by.x = "ensembl_gene_id", 
+                             by.y = "ENSG", 
+                             all.y = TRUE)
+exp_data <- unique(exp_data)
 
-rnaseq_reads <- merge.data.table(x = bm, y = rnaseq_reads, 
-                                 by.x = "ensembl_gene_id", by.y = "ENSG", 
-                                 all.y = TRUE)
-rnaseq_reads[, ensembl_gene_id := NULL]
+
+rnaseq_reads <- exp_data[, .SD, 
+                         .SDcols = setdiff(names(exp_data),
+                                           c("ensembl_gene_id",
+                                             "entrezgene_id"))]
 
 setnames(rnaseq_reads, "external_gene_name", "ENSG")
 
