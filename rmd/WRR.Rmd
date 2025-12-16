@@ -243,7 +243,6 @@ degs
 temp <- degs[  padj < alpha & 
                WRR_category %in% c("PNS_Recovery", "PNS_Enhanced") & 
                Group == "PNS_vs_FA", 
-               
              .(external_gene_name, log2FoldChange, WRR_category)]
 setorder(temp, "log2FoldChange")
 temp
@@ -262,8 +261,9 @@ temp
 
 
 ```{r}
-cur_treatment <- "PNS_vs_FA"
 
+# This is selecting
+cur_treatment <- "PNS_vs_FA"
 treatment <- degs[Group == cur_treatment & padj < alpha, external_gene_name]
 baseline_ns <- degs[Group == "FA_vs_Ctrl" & padj > alpha, external_gene_name]
 treatment <- intersect(treatment, baseline_ns)

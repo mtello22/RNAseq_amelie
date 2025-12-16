@@ -125,7 +125,7 @@ log2FC <- 1
 
 ### FA_vs_Ctrl
 
-First we will visualize the changes in expression comparing exposure to H2O2 vs control condition.
+First we will visualize the changes in expression comparing exposure to FA vs control condition.
 
 We will first generate a histogram of the raw p-values for all genes. If the H0 is true, we would expect to see an uniform distribution of pvalues. A peak at low zeroes indicate we reject the H0.
 
@@ -149,7 +149,7 @@ temp[[2]]
 
 ### PNS_vs_CTRL
 
-First we will visualize the changes in expression comparing exposure to H2O2 vs control condition.
+First we will visualize the changes in expression comparing exposure to PNS vs control condition.
 
 We will first generate a histogram of the raw p-values for all genes. If the H0 is true, we would expect to see an uniform distribution of pvalues. A peak at low zeroes indicate we reject the H0.
 
@@ -173,7 +173,7 @@ temp[[2]]
 
 ### PTS_vs_CTRL
 
-First we will visualize the changes in expression comparing exposure to H2O2 vs control condition.
+First we will visualize the changes in expression comparing exposure to PTS vs control condition.
 
 We will first generate a histogram of the raw p-values for all genes. If the H0 is true, we would expect to see an uniform distribution of pvalues. A peak at low zeroes indicate we reject the H0.
 
@@ -198,7 +198,7 @@ temp[[2]]
 
 ### PNS_vs_FA
 
-First we will visualize the changes in expression comparing exposure to H2O2 vs control condition.
+First we will visualize the changes in expression comparing exposure to PNS vs FA condition.
 
 We will first generate a histogram of the raw p-values for all genes. If the H0 is true, we would expect to see an uniform distribution of pvalues. A peak at low zeroes indicate we reject the H0.
 
@@ -222,7 +222,7 @@ temp[[2]]
 
 ### PTS_vs_FA
 
-First we will visualize the changes in expression comparing exposure to H2O2 vs control condition.
+First we will visualize the changes in expression comparing exposure to PTS vs FA condition.
 
 We will first generate a histogram of the raw p-values for all genes. If the H0 is true, we would expect to see an uniform distribution of pvalues. A peak at low zeroes indicate we reject the H0.
 
